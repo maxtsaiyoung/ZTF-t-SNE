@@ -26,7 +26,7 @@ for i in range(X.shape[1]):
     print(f"Histogram for {feature_names[i]} saved as 'histogram_{feature_names[i]}.png'.")
 
 # === Step 4: Apply t-SNE ===
-X_embed = TSNE(n_components=2, perplexity=25, n_iter=1000).fit_transform(X)
+X_embed = TSNE(n_components=2, perplexity=100, n_iter=1000).fit_transform(X)
 np.save('tsne_embedding_0760_14_3_mid8.npy', X_embed)  # Save embedding
 
 # === Step 5: Highlight Known White Dwarf ===
@@ -52,7 +52,7 @@ plt.grid()
 plt.savefig("tsne_plot_mid8_0760_14_3.png", dpi=300)
 
 # === Step 7: Apply 3-Component t-SNE and Plot ===
-X_embed_3d = TSNE(n_components=3, perplexity=30, n_iter=1000, random_state=42).fit_transform(X)
+X_embed_3d = TSNE(n_components=3, perplexity=100, n_iter=1000).fit_transform(X)
 np.save('tsne_embedding_0760_14_3_mid8_3d.npy', X_embed_3d)
 
 from mpl_toolkits.mplot3d import Axes3D
