@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive 3D t-SNE Scatter Plot Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #0f0f1e, #1a1a2e);
+            color: white;
+            overflow: hidden;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #visualizationArea {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: calc(100vw - 380px); /* Leave 380px for right panel */
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            width: 320px;
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #ccc;
+        }
+        
+        input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #444;
+            border-radius: 5px;
+            background: #222;
+            color: white;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            margin: 5px 0;
+        }
+        
+        .stats {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 10px;
+        }
+        
+        #selectedPoint {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0, 100, 200, 0.9);
+            border: 2px solid rgba(0, 150, 255, 0.8);
+            border-radius: 10px;
+            padding: 20px;
+            font-size: 14px;
+            color: #fff;
+            width: 350px;
+            box-shadow: 0 4px 20px rgba(0, 150, 255, 0.3);
+        }
+        
+        #selectedPoint .close-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+            padding: 0;
+            margin: 0;
+        }
+        
+        #selectedPoint .close-btn:hover {
+            background: rgba(255, 255, 255, 0.4);
+            transform: scale(1.1);
+        }
+        
+        #selectedPoint h4 {
+            margin: 0 0 15px 0;
+            color: #ffffff;
+            font-size: 16px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+            padding-bottom: 10px;
+        }
+        
+        #selectedPoint .coord {
+            font-family: 'Courier New', monospace;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px;
+            border-radius: 5px;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        
+        #lightCurveContainer {
+            background: rgba(0, 50, 100, 0.3);
+            border: 1px solid rgba(0, 150, 255, 0.5);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+        
+        #info {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 12px;
+            color: #ccc;
+            max-width: 300px;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 2px;
+            font-size: 12px;
+        }
+        
+        button:hover {
+            opacity: 0.8;
+        }
+        
+        .sample-data-btn {
+            background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .highlight-point {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+        
+        #lightCurveUpload {
+            background: linear-gradient(45deg, #11998e 0%, #38ef7d 100%);
+            margin-top: 10px;
+        }
+        
+        #lightCurveData {
+            margin-top: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 11px;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.16.1/plotly.min.js"></script>
+</head>
+<body>
+    <div id="container">
+        <div id="visualizationArea"></div>
+        <div id="controls">
+            <h3 style="margin-top: 0; color: #fff;">3D t-SNE Viewer</h3>
+            
+            <div class="control-group">
+                <label for="fileInput">Load t-SNE Data (CSV/JSON):</label>
+                <input type="file" id="fileInput" accept=".csv,.json,.txt" />
+                <button class="sample-data-btn" onclick="loadSampleData()">Load Sample Data</button>
+            </div>
+            
+            <div class="control-group">
+                <label for="lightCurveInput">Load Light Curve Data (Optional):</label>
+                <input type="file" id="lightCurveInput" accept=".csv,.json,.txt" />
+                <button id="lightCurveUpload" onclick="document.getElementById('lightCurveInput').click()">Upload Light Curves</button>
+            </div>
+            
+            <div class="control-group">
+                <label for="pointSize">Point Size: <span id="pointSizeValue">5</span></label>
+                <input type="range" id="pointSize" min="2" max="15" value="5" />
+            </div>
+            
+            <div class="control-group">
+                <button onclick="resetView()">Reset View</button>
+                <button onclick="toggleAnimation()">Toggle Rotation</button>
+                <button onclick="exportView()">Export View</button>
+            </div>
+            
+            <div class="stats" id="stats">
+                Points: 0<br>
+                Controls: Mouse to rotate, wheel to zoom, click points for info
+            </div>
+            
+            <div id="selectedPoint" style="display: none;">
+                <button class="close-btn" onclick="closeSelectedPoint()" title="Close">&times;</button>
+                <h4>Selected Star</h4>
+                <div id="pointInfo"></div>
+                <div id="lightCurveContainer" style="display: none;">
+                    <div id="lightCurvePlot" style="width: 100%; height: 200px;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="info">
+            <strong>Quick Start:</strong><br>
+            • Upload t-SNE CSV with x,y,z,RA,Dec columns<br>
+            • <span style="color: #4da6ff; font-weight: bold;">Click any point</span> to see star info<br>
+            • Drag to rotate, wheel to zoom<br>
+            • Try sample data first!
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, raycaster, mouse;
+        let animationId;
+        let isAnimating = false;
+        let pointCloud, pointsData = [];
+        let lightCurveData = {};
+        let selectedPointIndex = -1;
+        let highlightedPoint = null;
+        
+        // Initialize the 3D scene
+        function init() {
+            const visualizationArea = document.getElementById('visualizationArea');
+            
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0a);
+            
+            // Camera
+            const aspectRatio = visualizationArea.clientWidth / visualizationArea.clientHeight;
+            camera = new THREE.PerspectiveCamera(75, aspectRatio, 0.1, 1000);
+            camera.position.set(50, 50, 50);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(visualizationArea.clientWidth, visualizationArea.clientHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            visualizationArea.appendChild(renderer.domElement);
+            
+            // Raycaster for point selection
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            
+            // Set raycaster threshold for point clouds (make easier to click)
+            raycaster.params.Points.threshold = 5;
+            
+            // Basic orbit controls (simplified version)
+            setupControls();
+            
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(50, 50, 50);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+            
+            // Add coordinate axes
+            addCoordinateAxes();
+            
+            // Event listeners
+            setupEventListeners();
+            
+            animate();
+        }
+        
+        function setupControls() {
+            let isMouseDown = false;
+            let mouseX = 0, mouseY = 0;
+            let targetRotationX = 0, targetRotationY = 0;
+            let rotationX = 0, rotationY = 0;
+            
+            renderer.domElement.addEventListener('mousedown', (event) => {
+                event.preventDefault();
+                isMouseDown = true;
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (event) => {
+                if (!isMouseDown) return;
+                
+                const deltaX = event.clientX - mouseX;
+                const deltaY = event.clientY - mouseY;
+                
+                if (event.button === 0) { // Left button - rotate
+                    targetRotationY += deltaX * 0.01;
+                    targetRotationX += deltaY * 0.01;
+                    targetRotationX = Math.max(-Math.PI/2, Math.min(Math.PI/2, targetRotationX));
+                }
+                
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => {
+                isMouseDown = false;
+            });
+            
+            renderer.domElement.addEventListener('click', onPointClick);
+            
+            renderer.domElement.addEventListener('wheel', (event) => {
+                event.preventDefault();
+                const scale = event.deltaY > 0 ? 1.1 : 0.9;
+                
+                if (highlightedPoint && selectedPointIndex >= 0) {
+                    // Zoom towards the selected star
+                    const targetPosition = highlightedPoint.position.clone();
+                    const currentPosition = camera.position.clone();
+                    const direction = currentPosition.clone().sub(targetPosition);
+                    
+                    // Scale the distance to the selected star
+                    direction.multiplyScalar(scale);
+                    camera.position.copy(targetPosition.clone().add(direction));
+                    
+                    // Clamp distance to reasonable bounds
+                    const distanceToTarget = camera.position.distanceTo(targetPosition);
+                    if (distanceToTarget < 5) {
+                        // Too close, move back a bit
+                        direction.normalize().multiplyScalar(5);
+                        camera.position.copy(targetPosition.clone().add(direction));
+                    } else if (distanceToTarget > 200) {
+                        // Too far, bring closer
+                        direction.normalize().multiplyScalar(200);
+                        camera.position.copy(targetPosition.clone().add(direction));
+                    }
+                    
+                    // Look at the selected star
+                    camera.lookAt(targetPosition);
+                } else {
+                    // Default zoom towards center
+                    camera.position.multiplyScalar(scale);
+                    camera.position.clampLength(10, 200);
+                    camera.lookAt(0, 0, 0);
+                }
+            });
+            
+            // Update camera rotation
+            function updateCamera() {
+                rotationX += (targetRotationX - rotationX) * 0.1;
+                rotationY += (targetRotationY - rotationY) * 0.1;
+                
+                const distance = camera.position.length();
+                camera.position.x = distance * Math.sin(rotationY) * Math.cos(rotationX);
+                camera.position.y = distance * Math.sin(rotationX);
+                camera.position.z = distance * Math.cos(rotationY) * Math.cos(rotationX);
+                camera.lookAt(0, 0, 0);
+                
+                requestAnimationFrame(updateCamera);
+            }
+            updateCamera();
+        }
+        
+        function onPointClick(event) {
+            if (!pointCloud) return;
+            
+            // Calculate mouse position in normalized device coordinates
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            // Update raycaster
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Find intersections
+            const intersects = raycaster.intersectObjects([pointCloud]);
+            
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+                selectedPointIndex = intersect.index;
+                
+                // Remove previous highlight
+                if (highlightedPoint) {
+                    scene.remove(highlightedPoint);
+                }
+                
+                // Create highlight sphere (bigger and more visible)
+                const highlightGeometry = new THREE.SphereGeometry(2.5, 16, 16);
+                const highlightMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xff3333, 
+                    transparent: true, 
+                    opacity: 0.9 
+                });
+                highlightedPoint = new THREE.Mesh(highlightGeometry, highlightMaterial);
+                
+                // Position highlight at selected point
+                const position = pointCloud.geometry.attributes.position;
+                highlightedPoint.position.set(
+                    position.getX(selectedPointIndex),
+                    position.getY(selectedPointIndex),
+                    position.getZ(selectedPointIndex)
+                );
+                
+                scene.add(highlightedPoint);
+                
+                // Display point information
+                displayPointInfo(selectedPointIndex);
+            }
+        }
+        
+        function displayPointInfo(index) {
+            const selectedDiv = document.getElementById('selectedPoint');
+            const infoDiv = document.getElementById('pointInfo');
+            
+            if (index >= 0 && index < pointsData.length) {
+                const point = pointsData[index];
+                
+                let infoHTML = `
+                    <div class="coord"><strong>Point Index:</strong> ${index}</div>
+                    <div class="coord"><strong>RA:</strong> ${point.RA ? point.RA.toFixed(8) : 'N/A'}°</div>
+                    <div class="coord"><strong>Dec:</strong> ${point.Dec ? point.Dec.toFixed(8) : 'N/A'}°</div>
+                    <div class="coord"><strong>t-SNE Coords:</strong> (${point.x.toFixed(3)}, ${point.y.toFixed(3)}, ${point.z.toFixed(3)})</div>
+                `;
+                
+                // Add any additional features
+                Object.keys(point).forEach(key => {
+                    if (!['x', 'y', 'z', 'RA', 'Dec', 'color', 'label'].includes(key)) {
+                        const value = typeof point[key] === 'number' ? point[key].toFixed(3) : point[key];
+                        infoHTML += `<div class="coord"><strong>${key}:</strong> ${value}</div>`;
+                    }
+                });
+                
+                infoDiv.innerHTML = infoHTML;
+                selectedDiv.style.display = 'block';
+                
+                // Try to display light curve if available
+                displayLightCurve(point.RA, point.Dec, index);
+            }
+        }
+        
+        function displayLightCurve(ra, dec, pointIndex) {
+            const lightCurveContainer = document.getElementById('lightCurveContainer');
+            const plotDiv = document.getElementById('lightCurvePlot');
+            
+            // Clear previous plot
+            plotDiv.innerHTML = '';
+            
+            if (Object.keys(lightCurveData).length === 0) {
+                lightCurveContainer.style.display = 'none';
+                return;
+            }
+            
+            // Find matching light curve data
+            // This is where you'd implement your matching logic
+            // For now, we'll use a simple example
+            const matchingData = findLightCurveData(ra, dec, pointIndex);
+            
+            if (matchingData) {
+                lightCurveContainer.style.display = 'block';
+                
+                const trace = {
+                    x: matchingData.time,
+                    y: matchingData.magnitude,
+                    mode: 'markers+lines',
+                    type: 'scatter',
+                    marker: { 
+                        color: '#4da6ff', 
+                        size: 4,
+                        symbol: 'circle'
+                    },
+                    line: { 
+                        color: '#4da6ff', 
+                        width: 1.5 
+                    },
+                    name: matchingData.variability_type || 'Light Curve',
+                    hovertemplate: 'MJD: %{x:.2f}<br>Magnitude: %{y:.2f}<extra></extra>'
+                };
+                
+                const layout = {
+                    title: {
+                        text: `${matchingData.variability_type || 'Light Curve'}<br><span style="font-size:10px;">RA: ${ra.toFixed(6)}°, Dec: ${dec.toFixed(6)}°</span>`,
+                        font: { size: 12, color: 'white' }
+                    },
+                    xaxis: { 
+                        title: 'Modified Julian Date (MJD)', 
+                        color: 'white',
+                        gridcolor: 'rgba(255,255,255,0.1)'
+                    },
+                    yaxis: { 
+                        title: 'Magnitude', 
+                        autorange: 'reversed', 
+                        color: 'white',
+                        gridcolor: 'rgba(255,255,255,0.1)'
+                    },
+                    plot_bgcolor: 'rgba(0,0,0,0.5)',
+                    paper_bgcolor: 'rgba(0,0,0,0)',
+                    font: { color: 'white', size: 10 },
+                    margin: { t: 50, r: 20, b: 50, l: 50 },
+                    showlegend: false
+                };
+                
+                Plotly.newPlot(plotDiv, [trace], layout, { 
+                    responsive: true, 
+                    displayModeBar: false 
+                });
+            } else {
+                lightCurveContainer.style.display = 'none';
+            }
+        }
+        
+        function findLightCurveData(ra, dec, pointIndex) {
+            // For sample data, use point index directly
+            if (lightCurveData[pointIndex]) {
+                return lightCurveData[pointIndex];
+            }
+            
+            // This function should match your light curve data to the selected point
+            // You can implement this based on your data structure
+            
+            // Option 1: Match by RA/Dec coordinates (with tolerance)
+            const tolerance = 1e-6; // Adjust as needed
+            for (const key in lightCurveData) {
+                const data = lightCurveData[key];
+                if (data.ra && data.dec && 
+                    Math.abs(data.ra - ra) < tolerance && 
+                    Math.abs(data.dec - dec) < tolerance) {
+                    return data;
+                }
+            }
+            
+            return null;
+        }
+        
+        function addCoordinateAxes() {
+            const axesHelper = new THREE.AxesHelper(30);
+            scene.add(axesHelper);
+            
+            // Add grid
+            const gridHelper = new THREE.GridHelper(100, 20, 0x333333, 0x333333);
+            scene.add(gridHelper);
+        }
+        
+        function setupEventListeners() {
+            document.getElementById('fileInput').addEventListener('change', handleFileLoad);
+            document.getElementById('lightCurveInput').addEventListener('change', handleLightCurveLoad);
+            document.getElementById('pointSize').addEventListener('input', updatePointSize);
+            
+            window.addEventListener('resize', onWindowResize);
+        }
+        
+        function handleLightCurveLoad(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                
+                try {
+                    if (file.name.endsWith('.json')) {
+                        lightCurveData = JSON.parse(text);
+                    } else {
+                        // Parse CSV light curve data
+                        parseLightCurveCSV(text);
+                    }
+                    
+                    console.log('Light curve data loaded:', Object.keys(lightCurveData).length, 'entries');
+                    alert('Light curve data loaded successfully! Click on points to view their light curves.');
+                    
+                } catch (error) {
+                    alert('Error loading light curve data: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+        
+        function parseLightCurveCSV(text) {
+            // This function should be customized based on your light curve data format
+            // Example implementation for common formats
+            
+            const lines = text.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim());
+            
+            lightCurveData = {};
+            
+            // Example: Group by object ID or RA/Dec
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',').map(v => v.trim());
+                const row = {};
+                
+                headers.forEach((header, index) => {
+                    row[header] = isNaN(parseFloat(values[index])) ? values[index] : parseFloat(values[index]);
+                });
+                
+                // Group by some identifier (adjust based on your data)
+                const id = row.object_id || row.source_id || i; // Use appropriate ID column
+                
+                if (!lightCurveData[id]) {
+                    lightCurveData[id] = {
+                        time: [],
+                        magnitude: [],
+                        ra: row.ra || row.RA,
+                        dec: row.dec || row.Dec
+                    };
+                }
+                
+                lightCurveData[id].time.push(row.time || row.mjd || row.date);
+                lightCurveData[id].magnitude.push(row.magnitude || row.mag || row.flux);
+            }
+        }
+        
+        function handleFileLoad(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                
+                if (file.name.endsWith('.json')) {
+                    try {
+                        const data = JSON.parse(text);
+                        createPointCloud(data);
+                    } catch (error) {
+                        alert('Error parsing JSON file: ' + error.message);
+                    }
+                } else if (file.name.endsWith('.csv') || file.name.endsWith('.txt')) {
+                    parseCSV(text);
+                }
+            };
+            reader.readAsText(file);
+        }
+        
+        function parseCSV(text) {
+            const lines = text.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+            const data = [];
+            
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',').map(v => v.trim());
+                const row = {};
+                
+                headers.forEach((header, index) => {
+                    const value = values[index];
+                    row[header] = isNaN(parseFloat(value)) ? value : parseFloat(value);
+                });
+                
+                // Check for required coordinates
+                if (row.x !== undefined && row.y !== undefined && row.z !== undefined) {
+                    data.push(row);
+                }
+            }
+            
+            if (data.length > 0) {
+                createPointCloud(data);
+            } else {
+                alert('No valid 3D data found. Please ensure your CSV has x,y,z columns (and optionally RA,Dec).');
+            }
+        }
+        
+        function createPointCloud(data) {
+            // Store data for point selection
+            pointsData = data;
+            
+            // Remove existing point cloud
+            if (pointCloud) {
+                scene.remove(pointCloud);
+            }
+            if (highlightedPoint) {
+                scene.remove(highlightedPoint);
+                highlightedPoint = null;
+            }
+            
+            const geometry = new THREE.BufferGeometry();
+            const positions = [];
+            const colors = [];
+            
+            // Normalize data and create positions
+            const minMax = getMinMax(data);
+            
+            data.forEach(point => {
+                // Normalize to [-30, 30] range for better viewing
+                positions.push(
+                    normalize(point.x, minMax.x.min, minMax.x.max) * 30,
+                    normalize(point.y, minMax.y.min, minMax.y.max) * 30,
+                    normalize(point.z, minMax.z.min, minMax.z.max) * 30
+                );
+                
+                // Color based on label or z-value
+                let hue = 0.6; // Default blue
+                if (point.label === 1) {
+                    hue = 0; // Red for white dwarf
+                } else if (point.color !== undefined) {
+                    hue = normalize(point.color, minMax.color ? minMax.color.min : 0, minMax.color ? minMax.color.max : 1) * 0.7;
+                } else {
+                    hue = normalize(point.z, minMax.z.min, minMax.z.max) * 0.7;
+                }
+                
+                const color = new THREE.Color().setHSL(hue, 0.8, 0.6);
+                colors.push(color.r, color.g, color.b);
+            });
+            
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            
+            const material = new THREE.PointsMaterial({
+                size: parseFloat(document.getElementById('pointSize').value),
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.9,
+                sizeAttenuation: false  // Keep points same size regardless of distance
+            });
+            
+            pointCloud = new THREE.Points(geometry, material);
+            scene.add(pointCloud);
+            
+            // Update stats
+            const hasRA = data[0].ra !== undefined || data[0].RA !== undefined;
+            const hasDec = data[0].dec !== undefined || data[0].Dec !== undefined;
+            
+            document.getElementById('stats').innerHTML = `
+                Points: ${data.length}<br>
+                RA/Dec data: ${hasRA && hasDec ? 'Yes' : 'No'}<br>
+                <strong style="color: #4da6ff;">👆 Click points for details!</strong><br>
+                Controls: Drag=rotate, Wheel=zoom
+            `;
+            
+            // Hide selection info
+            document.getElementById('selectedPoint').style.display = 'none';
+        }
+        
+        function getMinMax(data) {
+            const result = {
+                x: { min: Infinity, max: -Infinity },
+                y: { min: Infinity, max: -Infinity },
+                z: { min: Infinity, max: -Infinity }
+            };
+            
+            // Check for color column
+            const hasColor = data[0].color !== undefined;
+            if (hasColor) {
+                result.color = { min: Infinity, max: -Infinity };
+            }
+            
+            data.forEach(point => {
+                result.x.min = Math.min(result.x.min, point.x);
+                result.x.max = Math.max(result.x.max, point.x);
+                result.y.min = Math.min(result.y.min, point.y);
+                result.y.max = Math.max(result.y.max, point.y);
+                result.z.min = Math.min(result.z.min, point.z);
+                result.z.max = Math.max(result.z.max, point.z);
+                
+                if (hasColor) {
+                    result.color.min = Math.min(result.color.min, point.color);
+                    result.color.max = Math.max(result.color.max, point.color);
+                }
+            });
+            
+            return result;
+        }
+        
+        function normalize(value, min, max) {
+            return (value - min) / (max - min) * 2 - 1; // Normalize to [-1, 1]
+        }
+        
+        function updatePointSize() {
+            const size = parseFloat(document.getElementById('pointSize').value);
+            document.getElementById('pointSizeValue').textContent = size;
+            
+            if (pointCloud) {
+                pointCloud.material.size = size;
+            }
+        }
+        
+        function closeSelectedPoint() {
+            // Hide the selected point info panel
+            document.getElementById('selectedPoint').style.display = 'none';
+            
+            // Remove the highlight sphere
+            if (highlightedPoint) {
+                scene.remove(highlightedPoint);
+                highlightedPoint = null;
+            }
+            
+            // Reset selected point index
+            selectedPointIndex = -1;
+        }
+        
+        function resetView() {
+            camera.position.set(50, 50, 50);
+            camera.lookAt(0, 0, 0);
+            
+            // Close selected point info
+            closeSelectedPoint();
+        }
+        
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+        }
+        
+        function exportView() {
+            const link = document.createElement('a');
+            link.download = 'tsne_3d_view.png';
+            link.href = renderer.domElement.toDataURL();
+            link.click();
+        }
+        
+        function loadSampleData() {
+            // Generate sample t-SNE-like data with RA/Dec
+            const sampleData = [];
+            const numClusters = 5;
+            const pointsPerCluster = 100;
+            
+            // Create sample light curve data for demonstration
+            lightCurveData = {};
+            
+            for (let cluster = 0; cluster < numClusters; cluster++) {
+                const centerX = (Math.random() - 0.5) * 20;
+                const centerY = (Math.random() - 0.5) * 20;
+                const centerZ = (Math.random() - 0.5) * 20;
+                const baseRA = 150 + Math.random() * 60; // Sample RA range
+                const baseDec = -10 + Math.random() * 40; // Sample Dec range
+                
+                for (let i = 0; i < pointsPerCluster; i++) {
+                    const pointIndex = cluster * pointsPerCluster + i;
+                    const ra = baseRA + (Math.random() - 0.5) * 2;
+                    const dec = baseDec + (Math.random() - 0.5) * 2;
+                    
+                    sampleData.push({
+                        x: centerX + (Math.random() - 0.5) * 8,
+                        y: centerY + (Math.random() - 0.5) * 8,
+                        z: centerZ + (Math.random() - 0.5) * 8,
+                        RA: ra,
+                        Dec: dec,
+                        color: cluster / numClusters,
+                        label: (cluster === 0 && i === 0) ? 1 : 0, // Make first point a "white dwarf"
+                        best_period: Math.random() * 10 + 1,
+                        magnitude: Math.random() * 2 + 15
+                    });
+                    
+                    // Create realistic sample light curves for each point
+                    lightCurveData[pointIndex] = generateSampleLightCurve(ra, dec, cluster, i);
+                }
+            }
+            
+            createPointCloud(sampleData);
+            console.log('Sample data loaded with', Object.keys(lightCurveData).length, 'light curves');
+        }
+        
+        function generateSampleLightCurve(ra, dec, cluster, pointIndex) {
+            const startTime = 58000; // Rough MJD for 2018 (ZTF start)
+            const numPoints = 50 + Math.floor(Math.random() * 100); // 50-150 observations
+            const time = [];
+            const magnitude = [];
+            
+            // Different types of variability based on cluster
+            const variabilityTypes = ['RR_Lyrae', 'Cepheid', 'Eclipsing_Binary', 'White_Dwarf', 'Irregular'];
+            const varType = variabilityTypes[cluster];
+            
+            for (let i = 0; i < numPoints; i++) {
+                const t = startTime + Math.random() * 365 * 2; // 2 years of observations
+                time.push(t);
+                
+                let mag;
+                switch(varType) {
+                    case 'RR_Lyrae':
+                        // RR Lyrae: ~0.5 day period, ~1 mag amplitude
+                        const rrPhase = (t * 2 * Math.PI) / 0.5;
+                        mag = 16.5 + 0.5 * Math.sin(rrPhase) + 0.1 * (Math.random() - 0.5);
+                        break;
+                        
+                    case 'Cepheid':
+                        // Cepheid: ~10 day period, ~1.5 mag amplitude
+                        const cepPhase = (t * 2 * Math.PI) / 10;
+                        mag = 15.0 + 0.75 * Math.sin(cepPhase) + 0.15 * (Math.random() - 0.5);
+                        break;
+                        
+                    case 'Eclipsing_Binary':
+                        // Eclipsing binary: ~2.5 day period with deep eclipses
+                        const phase = ((t % 2.5) / 2.5) * 2 * Math.PI;
+                        mag = 17.0;
+                        if (Math.abs(Math.sin(phase)) < 0.2) {
+                            mag += 1.2; // Primary eclipse
+                        } else if (Math.abs(Math.sin(phase + Math.PI)) < 0.15) {
+                            mag += 0.8; // Secondary eclipse
+                        }
+                        mag += 0.05 * (Math.random() - 0.5);
+                        break;
+                        
+                    case 'White_Dwarf':
+                        // White dwarf: mostly constant with occasional flares
+                        mag = 18.5 + 0.05 * (Math.random() - 0.5);
+                        if (Math.random() < 0.02) { // 2% chance of flare
+                            mag -= Math.random() * 2; // Flare makes it brighter
+                        }
+                        break;
+                        
+                    default: // Irregular
+                        // Irregular variable: random walk
+                        mag = 16.8 + Math.sin(t / 20) * 0.3 + 0.2 * (Math.random() - 0.5);
+                        break;
+                }
+                
+                magnitude.push(mag);
+            }
+            
+            // Sort by time
+            const combined = time.map((t, i) => ({ time: t, mag: magnitude[i] }));
+            combined.sort((a, b) => a.time - b.time);
+            
+            return {
+                ra: ra,
+                dec: dec,
+                time: combined.map(d => d.time),
+                magnitude: combined.map(d => d.mag),
+                variability_type: varType,
+                num_observations: numPoints
+            };
+        }
+        
+        function animate() {
+            animationId = requestAnimationFrame(animate);
+            
+            if (isAnimating && pointCloud) {
+                pointCloud.rotation.y += 0.005;
+            }
+            
+            // Animate highlight
+            if (highlightedPoint) {
+                highlightedPoint.material.opacity = 0.5 + 0.3 * Math.sin(Date.now() * 0.005);
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        function onWindowResize() {
+            const visualizationArea = document.getElementById('visualizationArea');
+            const aspectRatio = visualizationArea.clientWidth / visualizationArea.clientHeight;
+            
+            camera.aspect = aspectRatio;
+            camera.updateProjectionMatrix();
+            renderer.setSize(visualizationArea.clientWidth, visualizationArea.clientHeight);
+        }
+        
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
