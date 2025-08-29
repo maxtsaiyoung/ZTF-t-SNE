@@ -549,25 +549,54 @@
         }
         
         function findLightCurveData(ra, dec, pointIndex) {
+            console.log('Looking for light curve data:', { ra, dec, pointIndex });
+            console.log('Available light curve keys:', Object.keys(lightCurveData));
+            
             // For sample data, use point index directly
-            if (lightCurveData[pointIndex]) {
+            if (lightCurveData[pointIndex] !== undefined) {
+                console.log('Found light curve by point index:', pointIndex);
                 return lightCurveData[pointIndex];
             }
             
-            // This function should match your light curve data to the selected point
-            // You can implement this based on your data structure
+            // Try to find by string key
+            if (lightCurveData[pointIndex.toString()]) {
+                console.log('Found light curve by string index:', pointIndex.toString());
+                return lightCurveData[pointIndex.toString()];
+            }
             
             // Option 1: Match by RA/Dec coordinates (with tolerance)
-            const tolerance = 1e-6; // Adjust as needed
+            const tolerance = 0.001; // Increased tolerance for real data
             for (const key in lightCurveData) {
                 const data = lightCurveData[key];
-                if (data.ra && data.dec && 
-                    Math.abs(data.ra - ra) < tolerance && 
-                    Math.abs(data.dec - dec) < tolerance) {
-                    return data;
+                if (data.ra && data.dec && ra && dec) {
+                    const raDiff = Math.abs(data.ra - ra);
+                    const decDiff = Math.abs(data.dec - dec);
+                    console.log(`Checking ${key}: RA diff=${raDiff}, Dec diff=${decDiff}`);
+                    
+                    if (raDiff < tolerance && decDiff < tolerance) {
+                        console.log('Found light curve by RA/Dec match:', key);
+                        return data;
+                    }
                 }
             }
             
+            // Option 2: Try to find by any identifier that might match
+            const possibleKeys = [
+                pointIndex,
+                pointIndex.toString(),
+                `star_${pointIndex}`,
+                `object_${pointIndex}`,
+                `source_${pointIndex}`
+            ];
+            
+            for (const key of possibleKeys) {
+                if (lightCurveData[key]) {
+                    console.log('Found light curve by alternative key:', key);
+                    return lightCurveData[key];
+                }
+            }
+            
+            console.log('No light curve data found for this point');
             return null;
         }
         
