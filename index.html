@@ -232,6 +232,13 @@
                 <button onclick="exportView()">Export View</button>
             </div>
             
+            <div class="control-group">
+                <button onclick="highlightSpecificPoint()" style="background: linear-gradient(45deg, #ff4444 0%, #cc0000 100%);">Find Target Star</button>
+                <div style="font-size: 10px; color: #aaa; margin-top: 5px;">
+                    RA: 234.883995°, Dec: 50.46077304°
+                </div>
+            </div>
+            
             <div class="stats" id="stats">
                 Points: 0<br>
                 Controls: Mouse to rotate, wheel to zoom, click points for info
@@ -265,6 +272,11 @@
         let lightCurveData = {};
         let selectedPointIndex = -1;
         let highlightedPoint = null;
+        let targetMarker = null; // Red X marker for target star
+        
+        // Target coordinates
+        const TARGET_RA = 234.883995;
+        const TARGET_DEC = 50.46077304;
         
         // Initialize the 3D scene
         function init() {
@@ -456,15 +468,28 @@
                 const point = pointsData[index];
                 
                 let infoHTML = `
-                    <div class="coord"><strong>Point Index:</strong> ${index}</div>
-                    <div class="coord"><strong>RA:</strong> ${point.RA ? point.RA.toFixed(8) : 'N/A'}°</div>
-                    <div class="coord"><strong>Dec:</strong> ${point.Dec ? point.Dec.toFixed(8) : 'N/A'}°</div>
-                    <div class="coord"><strong>t-SNE Coords:</strong> (${point.x.toFixed(3)}, ${point.y.toFixed(3)}, ${point.z.toFixed(3)})</div>
+                    <div class="coord"><strong>Point Index:</strong> ${index}</div>`;
+                
+                // Check for RA in both uppercase and lowercase
+                const ra = point.RA || point.ra;
+                const dec = point.Dec || point.dec;
+                
+                // Only show RA if it has a value
+                if (ra !== undefined && ra !== null && !isNaN(ra)) {
+                    infoHTML += `<div class="coord"><strong>RA:</strong> ${ra.toFixed(5)}°</div>`;
+                }
+                
+                // Only show Dec if it has a value
+                if (dec !== undefined && dec !== null && !isNaN(dec)) {
+                    infoHTML += `<div class="coord"><strong>Dec:</strong> ${dec.toFixed(5)}°</div>`;
+                }
+                
+                infoHTML += `<div class="coord"><strong>t-SNE Coords:</strong> (${point.x.toFixed(3)}, ${point.y.toFixed(3)}, ${point.z.toFixed(3)})</div>
                 `;
                 
                 // Add any additional features
                 Object.keys(point).forEach(key => {
-                    if (!['x', 'y', 'z', 'RA', 'Dec', 'color', 'label'].includes(key)) {
+                    if (!['x', 'y', 'z', 'RA', 'Dec', 'ra', 'dec', 'color', 'label'].includes(key)) {
                         const value = typeof point[key] === 'number' ? point[key].toFixed(3) : point[key];
                         infoHTML += `<div class="coord"><strong>${key}:</strong> ${value}</div>`;
                     }
@@ -474,7 +499,7 @@
                 selectedDiv.style.display = 'block';
                 
                 // Try to display light curve if available
-                displayLightCurve(point.RA, point.Dec, index);
+                displayLightCurve(ra || point.RA || point.ra, dec || point.Dec || point.dec, index);
             }
         }
         
@@ -518,7 +543,7 @@
                 
                 const layout = {
                     title: {
-                        text: `${matchingData.variability_type || 'Light Curve'}<br><span style="font-size:10px;">RA: ${ra.toFixed(6)}°, Dec: ${dec.toFixed(6)}°</span>`,
+                        text: `${matchingData.variability_type || 'Light Curve'}<br><span style="font-size:10px;">RA: ${ra.toFixed(5)}°, Dec: ${dec.toFixed(5)}°</span>`,
                         font: { size: 12, color: 'white' }
                     },
                     xaxis: { 
@@ -789,7 +814,7 @@
             
             document.getElementById('stats').innerHTML = `
                 Points: ${data.length}<br>
-                RA/Dec data: ${hasRA && hasDec ? 'Yes' : 'No'}<br>
+                Coordinate data: ${hasRA && hasDec ? 'Yes' : 'No'}<br>
                 <strong style="color: #4da6ff;">👆 Click points for details!</strong><br>
                 Controls: Drag=rotate, Wheel=zoom
             `;
@@ -861,10 +886,119 @@
             
             // Close selected point info
             closeSelectedPoint();
+            
+            // Remove target marker
+            if (targetMarker) {
+                scene.remove(targetMarker);
+                targetMarker = null;
+            }
         }
         
         function toggleAnimation() {
             isAnimating = !isAnimating;
+        }
+        
+        function highlightSpecificPoint() {
+            if (!pointsData.length) {
+                alert('Please load data first!');
+                return;
+            }
+            
+            // Find the point with matching RA/Dec
+            let targetIndex = -1;
+            let closestDistance = Infinity;
+            const tolerance = 0.001; // Small tolerance for floating point comparison
+            
+            pointsData.forEach((point, index) => {
+                const ra = point.RA || point.ra;
+                const dec = point.Dec || point.dec;
+                
+                if (ra !== undefined && dec !== undefined) {
+                    const raDistance = Math.abs(ra - TARGET_RA);
+                    const decDistance = Math.abs(dec - TARGET_DEC);
+                    const totalDistance = Math.sqrt(raDistance * raDistance + decDistance * decDistance);
+                    
+                    if (totalDistance < closestDistance) {
+                        closestDistance = totalDistance;
+                        targetIndex = index;
+                    }
+                }
+            });
+            
+            if (targetIndex === -1 || closestDistance > 0.01) {
+                alert(`Target star not found!\nLooking for RA: ${TARGET_RA}°, Dec: ${TARGET_DEC}°\nClosest match distance: ${closestDistance.toFixed(6)}°`);
+                return;
+            }
+            
+            // Remove existing target marker
+            if (targetMarker) {
+                scene.remove(targetMarker);
+            }
+            
+            // Create red X marker using line geometry
+            const xGeometry = new THREE.BufferGeometry();
+            const xPositions = [];
+            
+            // Get position of target point
+            const position = pointCloud.geometry.attributes.position;
+            const x = position.getX(targetIndex);
+            const y = position.getY(targetIndex);
+            const z = position.getZ(targetIndex);
+            
+            // Create X shape with two crossing lines
+            const size = 4;
+            // Line 1: from top-left to bottom-right
+            xPositions.push(x - size, y + size, z);
+            xPositions.push(x + size, y - size, z);
+            // Line 2: from top-right to bottom-left  
+            xPositions.push(x + size, y + size, z);
+            xPositions.push(x - size, y - size, z);
+            
+            xGeometry.setAttribute('position', new THREE.Float32BufferAttribute(xPositions, 3));
+            
+            const xMaterial = new THREE.LineBasicMaterial({ 
+                color: 0xff0000, 
+                linewidth: 5,
+                transparent: true,
+                opacity: 0.9
+            });
+            
+            targetMarker = new THREE.LineSegments(xGeometry, xMaterial);
+            scene.add(targetMarker);
+            
+            // Also select this point to show its info
+            selectedPointIndex = targetIndex;
+            
+            // Remove previous highlight sphere
+            if (highlightedPoint) {
+                scene.remove(highlightedPoint);
+            }
+            
+            // Create highlight sphere
+            const highlightGeometry = new THREE.SphereGeometry(3, 16, 16);
+            const highlightMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xff3333, 
+                transparent: true, 
+                opacity: 0.7,
+                wireframe: true
+            });
+            highlightedPoint = new THREE.Mesh(highlightGeometry, highlightMaterial);
+            highlightedPoint.position.set(x, y, z);
+            scene.add(highlightedPoint);
+            
+            // Display point information
+            displayPointInfo(targetIndex);
+            
+            // Focus camera on the target
+            const distance = 30;
+            camera.position.set(x + distance, y + distance, z + distance);
+            camera.lookAt(x, y, z);
+            
+            const point = pointsData[targetIndex];
+            const ra = point.RA || point.ra;
+            const dec = point.Dec || point.dec;
+            
+            alert(`Target star found!\nPoint Index: ${targetIndex}\nRA: ${ra.toFixed(6)}°\nDec: ${dec.toFixed(6)}°\nDistance from target: ${closestDistance.toFixed(6)}°`);
         }
         
         function exportView() {
